@@ -16,7 +16,7 @@ def initialize_firebase_app():
             # Initialize Firebase Admin with the service account credentials
             cred = credentials.Certificate('./serviceAccount.json')
             firebase_admin.initialize_app(cred, {
-                'databaseURL': 'https://fypdb-84439-default-rtdb.firebaseio.com/'
+                'databaseURL': 'https://dbfyp-27eb4-default-rtdb.firebaseio.com/'
             })
             firebase_initialized = True
         except ValueError:
