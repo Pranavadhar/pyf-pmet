@@ -4,34 +4,29 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
-import firebase_admin
-from firebase_admin import credentials
-from firebase_admin import db
+import requests
+import json
 
-firebase_initialized = False
+# Firebase configuration
+firebase_url = st.secrets["firebase"]["url"]
+firebase_auth_token = st.secrets["firebase"]["auth_token"]
 
-def initialize_firebase_app():
-    global firebase_initialized
-    if not firebase_initialized:
-        try:
-            # Initialize Firebase Admin with the service account credentials
-            cred = credentials.Certificate('./serviceAccount.json')
-            firebase_admin.initialize_app(cred, {
-                'databaseURL': 'https://dbfyp-27eb4-default-rtdb.firebaseio.com/'
-            })
-            firebase_initialized = True
-        except ValueError:
-            # Firebase app already initialized
-            firebase_initialized = True
+# Function to fetch data from Firebase using REST API
+def fetch_firebase_data():
+    try:
+        response = requests.get(f'{firebase_url}/parameters.json?auth={firebase_auth_token}')
+        if response.ok:
+            entries = response.json()
+            return entries
+        else:
+            st.error("Error fetching data from Firebase.")
+            return None
+    except requests.exceptions.RequestException as e:
+        st.error(f"Network error: {e}")
+        return None
 
-# Initialize Firebase app
-initialize_firebase_app()
-
-# Get a reference to the database service
-ref = db.reference('parameters')
-
-# Get all entries under the "DHT" node
-entries = ref.get()
+# Fetch Firebase data
+entries = fetch_firebase_data()
 
 # Load the dataset, model, and initialize the scaler
 df = pd.read_csv('Experimental_data_fresh_cell.csv')
@@ -43,32 +38,21 @@ target = 'Temperature'
 scaler = MinMaxScaler()
 scaler.fit(df[features + [target]])
 
+# Parse entries if available
 if entries:
     # Initialize variables
-    temperature, current, voltage = None, None, None
-    
-    # Iterate over each entry in the "DHT" node
-    for entry_id, entry_data in entries.items():
-        # Assign values to variables based on entry ID
-        if entry_id == 'temperature':
-            temperature_input = entry_data
-        elif entry_id == 'current':
-            current_input = entry_data
-        elif entry_id == 'voltage':
-            voltage_input = entry_data
+    temperature_input = entries.get('temperature')
+    current_input = entries.get('current')
+    voltage_input = entries.get('voltage')
 
 # Streamlit UI
 st.title('Temperature Prediction with LSTM')
 
-# st.header('Enter Input Data:')
-# time_input = st.number_input('Time', min_value=0.0, step=0.1)
-time_input = 0.1
-st.write(f"voltage from the sensor: {voltage_input}")
+# Display sensor inputs
+st.write(f"Voltage from the sensor: {voltage_input}")
 st.write(f"Current from the sensor: {current_input}")
-# current_input = st.number_input('Current', step=0.0001, format="%.4f")
-# voltage_input = st.number_input('Voltage', step=0.0001, format="%.4f")
 
-# Prediction for current input
+# Define the prediction function
 def predict_temperature(time, current, voltage):
     input_data = [time, current, voltage, 0]  # Append a dummy target value
     input_scaled = scaler.transform([input_data])
@@ -104,17 +88,20 @@ def forecast_next_5_steps(initial_time):
 
     return future_predictions
 
-# Predict button logic
-# if st.button('Predict Temperature'):
+# Use fixed time input for prediction (for demonstration)
+time_input = 0.1
+
+# Predict temperature for current input
 predicted_temp = predict_temperature(time_input, current_input, voltage_input)
 st.write(f"### Predicted Temperature: {predicted_temp:.2f} °C")
 
+# Forecast future temperatures
 future_temps = forecast_next_5_steps(time_input)
 st.write("### Forecasted Temperatures for the Next 5 Time Steps:")
 for i, temp in enumerate(future_temps, start=1):
     st.write(f"Time = {time_input + i}: {temp:.2f} °C")
 
-    # Plotting the forecasted temperatures
+# Plotting the forecasted temperatures
 fig, ax = plt.subplots(figsize=(10, 6))
 ax.plot(range(int(time_input) + 1, int(time_input) + 6), future_temps, marker='o', label='Predicted Temperature')
 ax.set_title("Predicted Temperature for the Next 5 Time Steps")
